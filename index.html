@@ -124,6 +124,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .category-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .category-btn{background:var(--bg);border:2px solid transparent;padding:10px 4px;border-radius:10px;cursor:pointer;text-align:center;font-size:11px;color:var(--text)}
 .category-btn.active{border-color:var(--primary);background:rgba(102,126,234,.1)}
+.category-btn.active.income-active{border-color:var(--success);background:rgba(16,185,129,.1)}
+.category-btn.active.credit-active{border-color:var(--credit);background:rgba(139,92,246,.1)}
 .category-btn .emoji{font-size:22px;display:block;margin-bottom:2px}
 .submit-btn{width:100%;background:var(--header-grad);color:#fff;border:none;padding:14px;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;transition:opacity .2s}
 .submit-btn:active{opacity:.85}
@@ -469,6 +471,16 @@ body[data-theme="dark"] .install-card{background:linear-gradient(135deg,rgba(102
       </div>
       <div style="font-size:32px;font-weight:700;color:var(--success)" id="incomeTotal">RM0.00</div>
       <div style="font-size:12px;color:var(--text-light);margin-top:4px" id="incomeCount">0 income sources</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
+        <div style="background:rgba(16,185,129,.08);border:1.5px solid rgba(16,185,129,.25);border-radius:12px;padding:12px">
+          <div style="font-size:11px;color:var(--text-light);text-transform:uppercase;font-weight:600">🏦 In Bank</div>
+          <div style="font-size:20px;font-weight:700;color:var(--success);margin-top:4px" id="incomeBank">RM0.00</div>
+        </div>
+        <div style="background:rgba(102,126,234,.08);border:1.5px solid rgba(102,126,234,.25);border-radius:12px;padding:12px">
+          <div style="font-size:11px;color:var(--text-light);text-transform:uppercase;font-weight:600">💵 Cash on Hand</div>
+          <div style="font-size:20px;font-weight:700;color:var(--primary);margin-top:4px" id="incomeCash">RM0.00</div>
+        </div>
+      </div>
     </div>
     <div class="card">
       <div class="card-title">Income Sources</div>
@@ -1737,7 +1749,10 @@ function getMonthTx(date) {
 function getMonthIncome(date) {
   date = date || new Date();
   var m = date.getMonth(), y = date.getFullYear();
-  return incomeSources.filter(function(s) { var d = new Date(s.date); return d.getMonth() === m && d.getFullYear() === y; });
+  var sources = incomeSources.filter(function(s) { var d = new Date(s.date); return d.getMonth() === m && d.getFullYear() === y; });
+  var txIncome = transactions.filter(function(t) { var d = new Date(t.date); return t.type === 'income' && d.getMonth() === m && d.getFullYear() === y; });
+  var normalised = txIncome.map(function(t) { return { id: 'tx_' + t.id, name: t.description || 'Income', amount: t.amount, method: t.method || 'cash', date: t.date, _fromTx: true }; });
+  return sources.concat(normalised);
 }
 
 function getCCOutstanding(cc) {
@@ -1973,6 +1988,7 @@ function setMethod(method) {
   if (method === 'cash') { c.classList.add('active'); cr.classList.remove('active'); }
   else { cr.classList.add('active'); c.classList.remove('active'); }
   updateMethodUI();
+  renderCategories();
 }
 function updateMethodUI() {
   var showCC = currentMethod === 'credit' && currentType === 'expense' && creditCards.length > 0;
@@ -1992,18 +2008,23 @@ function renderCategories() {
   var found = false;
   for (var i = 0; i < list.length; i++) if (list[i].id === currentCategory) found = true;
   if (!found) currentCategory = list[0].id;
+  var colorClass = currentType === 'income' ? 'income-active' : (currentMethod === 'credit' ? 'credit-active' : '');
   var html = '';
   for (var j = 0; j < list.length; j++) {
     var c = list[j];
-    var active = c.id === currentCategory ? 'active' : '';
+    var active = c.id === currentCategory ? 'active ' + colorClass : '';
     html += '<div class="category-btn ' + active + '" data-id="' + c.id + '" onclick="selectCategory(\'' + c.id + '\')"><span class="emoji">' + c.emoji + '</span>' + c.name + '</div>';
   }
   document.getElementById('categoryGrid').innerHTML = html;
 }
 function selectCategory(id) {
   currentCategory = id;
+  var colorClass = currentType === 'income' ? 'income-active' : (currentMethod === 'credit' ? 'credit-active' : '');
   var btns = document.querySelectorAll('#categoryGrid .category-btn');
-  for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('active', btns[i].dataset.id === id);
+  for (var i = 0; i < btns.length; i++) {
+    var isActive = btns[i].dataset.id === id;
+    btns[i].className = 'category-btn' + (isActive ? ' active ' + colorClass : '');
+  }
 }
 
 function saveTransaction(e) {
@@ -2262,17 +2283,25 @@ function saveIncomeSource(e) {
 }
 function renderIncome() {
   var month = getMonthIncome();
-  var total = 0;
-  for (var i = 0; i < month.length; i++) total += Number(month[i].amount) || 0;
+  var total = 0, bank = 0, cashAmt = 0;
+  for (var i = 0; i < month.length; i++) {
+    var amt = Number(month[i].amount) || 0;
+    total += amt;
+    if (month[i].method === 'credit') bank += amt;
+    else cashAmt += amt;
+  }
   document.getElementById('incomeTotal').textContent = formatMoney(total);
-  document.getElementById('incomeCount').textContent = month.length + ' income sources this month';
+  document.getElementById('incomeBank').textContent = formatMoney(bank);
+  document.getElementById('incomeCash').textContent = formatMoney(cashAmt);
+  document.getElementById('incomeCount').textContent = month.length + ' income source' + (month.length !== 1 ? 's' : '') + ' this month';
   var list = document.getElementById('incomeList');
-  if (month.length === 0) { list.innerHTML = '<div class="empty-state"><div class="emoji">💵</div><div class="text">No income yet.</div></div>'; return; }
+  if (month.length === 0) { list.innerHTML = '<div class="empty-state"><div class="emoji">💵</div><div class="text">No income yet. Add from here or the Home tab.</div></div>'; return; }
   var html = '';
   for (var j = 0; j < month.length; j++) {
     var s = month[j];
-    var tag = s.method === 'credit' ? '<span class="method-tag credit">💳</span>' : '<span class="method-tag cash">💵</span>';
-    html += '<div class="income-source"><div class="icon">💵</div><div class="info"><div class="name">' + escapeHTML(s.name) + ' ' + tag + '</div><div class="meta">' + formatDate(s.date) + '</div></div><div class="amount">+' + formatMoney(s.amount) + '</div><div class="actions"><button onclick="deleteIncome(' + s.id + ')">🗑️</button></div></div>';
+    var tag = s.method === 'credit' ? '<span class="method-tag credit">🏦 Bank</span>' : '<span class="method-tag cash">💵 Cash</span>';
+    var deleteBtn = s._fromTx ? '' : '<button onclick="deleteIncome(' + s.id + ')">🗑️</button>';
+    html += '<div class="income-source"><div class="icon">💵</div><div class="info"><div class="name">' + escapeHTML(s.name) + ' ' + tag + '</div><div class="meta">' + formatDate(s.date) + (s._fromTx ? ' · from Home' : '') + '</div></div><div class="amount">+' + formatMoney(s.amount) + '</div><div class="actions">' + deleteBtn + '</div></div>';
   }
   list.innerHTML = html;
 }
