@@ -289,15 +289,40 @@ body[data-theme="dark"] .install-card{background:linear-gradient(135deg,rgba(102
 #receiptViewer img{max-width:100%;max-height:80vh;border-radius:8px}
 #receiptViewer .close-btn{position:absolute;top:20px;right:20px;background:rgba(255,255,255,.2);color:#fff;border:none;width:40px;height:40px;border-radius:50%;font-size:20px;cursor:pointer}
 
-/* === Import options === */
-.import-section{margin-bottom:14px}
+/* === Custom Confirm Dialog === */
+#customConfirm{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(4px)}
+#customConfirm.active{display:flex}
+.confirm-box{background:var(--card);border-radius:20px;padding:28px 24px 20px;max-width:320px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:popIn .2s ease}
+@keyframes popIn{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
+.confirm-icon{font-size:40px;text-align:center;margin-bottom:12px}
+.confirm-title{font-size:17px;font-weight:700;text-align:center;color:var(--text);margin-bottom:8px}
+.confirm-msg{font-size:14px;color:var(--text-light);text-align:center;line-height:1.5;margin-bottom:22px}
+.confirm-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.confirm-btns button{padding:13px;border:none;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer}
+.confirm-cancel{background:var(--bg);color:var(--text)}
+.confirm-ok{background:var(--danger);color:#fff}
+.confirm-ok.safe{background:var(--primary)}
+
 .import-section h3{font-size:13px;color:var(--text-light);margin-bottom:8px;font-weight:600}
 .helper-text{font-size:12px;color:var(--text-light);line-height:1.5;margin-bottom:10px}
 </style>
 </head>
 <body>
 
-<div id="offlineBar">📡 You're offline — changes save locally and will be available when you reconnect</div>
+<!-- Custom Confirm Dialog -->
+<div id="customConfirm">
+  <div class="confirm-box">
+    <div class="confirm-icon" id="confirmIcon">⚠️</div>
+    <div class="confirm-title" id="confirmTitle">Are you sure?</div>
+    <div class="confirm-msg" id="confirmMsg"></div>
+    <div class="confirm-btns">
+      <button class="confirm-cancel" onclick="resolveConfirm(false)">Cancel</button>
+      <button class="confirm-ok" id="confirmOkBtn" onclick="resolveConfirm(true)">Delete</button>
+    </div>
+  </div>
+</div>
+
+
 
 <!-- PIN Lock (Feature 12) -->
 <div id="lockScreen">
@@ -619,13 +644,13 @@ body[data-theme="dark"] .install-card{background:linear-gradient(135deg,rgba(102
     </div>
     <div class="type-toggle">
       <button class="active expense" id="typeExpense" onclick="setType('expense')">💸 Expense</button>
-      <button id="typeIncome" onclick="setType('income')">💵 Income</button>
+      <button class="income" id="typeIncome" onclick="setType('income')">💵 Income</button>
     </div>
     <div class="form-group">
       <label>Payment Method</label>
       <div class="method-toggle">
         <button class="active cash" id="methodCash" onclick="setMethod('cash')">💵 Cash</button>
-        <button id="methodCredit" onclick="setMethod('credit')">💳 Credit</button>
+        <button class="credit" id="methodCredit" onclick="setMethod('credit')">💳 Credit</button>
       </div>
     </div>
     <div class="form-group" id="creditCardSelectGroup" style="display:none">
@@ -1190,19 +1215,14 @@ function openReceiptViewer(id) {
 function closeReceiptViewer() { document.getElementById('receiptViewer').classList.remove('active'); currentReceiptTxId = null; }
 function deleteCurrentReceipt() {
   if (!currentReceiptTxId) return;
-  if (!confirm('Delete this receipt?')) return;
   var id = currentReceiptTxId;
-  // Remove from all transactions
-  for (var i = 0; i < transactions.length; i++) {
-    if (transactions[i].receipts) {
-      transactions[i].receipts = transactions[i].receipts.filter(function(x) { return x !== id; });
+  customConfirm('This receipt image will be permanently deleted.', {icon:'🧾', title:'Delete Receipt?', okText:'Delete'}).then(function(ok) {
+    if (!ok) return;
+    for (var i = 0; i < transactions.length; i++) {
+      if (transactions[i].receipts) { transactions[i].receipts = transactions[i].receipts.filter(function(x) { return x !== id; }); }
     }
-  }
-  saveAll();
-  deleteReceipt(id);
-  closeReceiptViewer();
-  switchView(getCurrentView());
-  showToast('🗑️ Receipt deleted', 'success');
+    saveAll(); deleteReceipt(id); closeReceiptViewer(); switchView(getCurrentView()); showToast('🗑️ Receipt deleted', 'success');
+  });
 }
 
 /* ====================== FEATURE 2: NOTIFICATIONS ====================== */
@@ -1397,11 +1417,10 @@ function saveContribution(e) {
   else showToast('💰 +' + formatMoney(amt) + ' to ' + g.name, 'success');
 }
 function deleteGoal(id) {
-  if (!confirm('Delete this goal?')) return;
-  goals = goals.filter(function(g) { return g.id !== id; });
-  saveAll();
-  renderGoalList();
-  renderGoals();
+  customConfirm('This savings goal and its progress will be deleted.', {icon:'🎯', title:'Delete Goal?', okText:'Delete'}).then(function(ok) {
+    if (!ok) return;
+    goals = goals.filter(function(g) { return g.id !== id; }); saveAll(); renderGoalList(); renderGoals();
+  });
 }
 function renderGoals() {
   var card = document.getElementById('goalsCard');
@@ -1618,18 +1637,14 @@ function setupPin() {
   showLockScreen();
 }
 function changePin() {
-  if (!confirm('Change PIN? You\'ll need to set a new one.')) return;
-  settings.pin = null;
-  saveAll();
-  setupPin();
+  customConfirm("You'll need to set a new PIN after this.", {icon:'🔑', title:'Change PIN?', okText:'Continue', safe:true}).then(function(ok) {
+    if (!ok) return; settings.pin = null; saveAll(); setupPin();
+  });
 }
 function disablePin() {
-  if (!confirm('Disable PIN lock?')) return;
-  settings.pin = null;
-  saveAll();
-  closePinSetup();
-  document.getElementById('pinStatus').textContent = 'Off';
-  showToast('🔓 PIN disabled', 'success');
+  customConfirm('Your app will be accessible without a PIN.', {icon:'🔓', title:'Disable PIN Lock?', okText:'Disable'}).then(function(ok) {
+    if (!ok) return; settings.pin = null; saveAll(); closePinSetup(); document.getElementById('pinStatus').textContent = 'Off'; showToast('🔓 PIN disabled', 'success');
+  });
 }
 function showLockScreen() {
   pinInput = '';
@@ -1699,13 +1714,11 @@ function processPin() {
   }
 }
 function resetPin() {
-  if (!confirm('Reset PIN? This will clear ALL data on this device.')) return;
-  settings.pin = null;
-  transactions = []; creditCards = []; debts = []; incomeSources = []; budgetLimits = []; goals = [];
-  saveAll();
-  hideLockScreen();
-  switchView('home');
-  showToast('🔓 Reset complete', 'success');
+  customConfirm('⚠️ This will erase ALL your budget data on this device. This cannot be undone.', {icon:'⚠️', title:'Reset PIN & Wipe Data?', okText:'Wipe & Reset'}).then(function(ok) {
+    if (!ok) return;
+    settings.pin = null; transactions = []; creditCards = []; debts = []; incomeSources = []; budgetLimits = []; goals = [];
+    saveAll(); hideLockScreen(); switchView('home'); showToast('🔓 Reset complete', 'success');
+  });
 }
 document.querySelectorAll('#keypad .key').forEach(function(b) {
   b.addEventListener('click', function() {
@@ -2066,15 +2079,13 @@ function saveTransaction(e) {
 }
 
 function deleteTransaction(id) {
-  if (!confirm('Delete this transaction?')) return;
-  var tx = transactions.find(function(t) { return t.id === id; });
-  if (tx && tx.receipts) {
-    tx.receipts.forEach(function(rid) { deleteReceipt(rid).catch(function(){}); });
-  }
-  transactions = transactions.filter(function(t) { return t.id !== id; });
-  saveAll();
-  switchView(getCurrentView());
-  showToast('🗑️ Deleted', 'success');
+  customConfirm('This transaction will be permanently removed.', {icon:'🗑️', title:'Delete Transaction?', okText:'Delete'}).then(function(ok) {
+    if (!ok) return;
+    var tx = transactions.find(function(t) { return t.id === id; });
+    if (tx && tx.receipts) { tx.receipts.forEach(function(rid) { deleteReceipt(rid).catch(function(){}); }); }
+    transactions = transactions.filter(function(t) { return t.id !== id; });
+    saveAll(); switchView(getCurrentView()); showToast('🗑️ Deleted', 'success');
+  });
 }
 
 function openCreditCardModal() { document.getElementById('creditCardForm').reset(); document.getElementById('creditCardOverlay').classList.add('active'); }
@@ -2132,7 +2143,7 @@ function renderCreditCards() {
   }
   list.innerHTML = html;
 }
-function deleteCreditCard(id) { if (!confirm('Delete this card?')) return; creditCards = creditCards.filter(function(c) { return c.id !== id; }); saveAll(); switchView('credit'); }
+function deleteCreditCard(id) { customConfirm('This credit card and all its data will be removed.', {icon:'💳', title:'Delete Card?', okText:'Delete'}).then(function(ok) { if (!ok) return; creditCards = creditCards.filter(function(c) { return c.id !== id; }); saveAll(); switchView('credit'); }); }
 function openCcPayModal(id) {
   var cc = null;
   for (var i = 0; i < creditCards.length; i++) if (creditCards[i].id == id) cc = creditCards[i];
@@ -2183,7 +2194,7 @@ function saveDebt(e) {
   showToast('🏦 Debt added!', 'success');
 }
 function editDebt(id) { switchView('debts'); }
-function deleteDebt(id) { if (!confirm('Delete this debt and all payment history?')) return; debts = debts.filter(function(d) { return d.id !== id; }); saveAll(); switchView('debts'); }
+function deleteDebt(id) { customConfirm('This debt and all payment history will be permanently deleted.', {icon:'🏦', title:'Delete Debt?', okText:'Delete'}).then(function(ok) { if (!ok) return; debts = debts.filter(function(d) { return d.id !== id; }); saveAll(); switchView('debts'); }); }
 function renderDebts() {
   var list = document.getElementById('debtsList');
   if (debts.length === 0) {
@@ -2305,7 +2316,7 @@ function renderIncome() {
   }
   list.innerHTML = html;
 }
-function deleteIncome(id) { if (!confirm('Delete?')) return; incomeSources = incomeSources.filter(function(s) { return s.id !== id; }); saveAll(); switchView('income'); }
+function deleteIncome(id) { customConfirm('Remove this income entry?', {icon:'💵', title:'Delete Income?', okText:'Delete'}).then(function(ok) { if (!ok) return; incomeSources = incomeSources.filter(function(s) { return s.id !== id; }); saveAll(); switchView('income'); }); }
 
 function renderTransactions() {
   var search = (document.getElementById('searchBox').value || '').toLowerCase();
@@ -2679,20 +2690,17 @@ function applySyncCode() {
   try {
     var data = JSON.parse(LZString.decompressFromBase64(code));
     if (!data.transactions) throw new Error('Invalid');
-    if (!confirm('Replace all data on this device?')) return;
-    transactions = data.transactions || [];
-    creditCards = data.creditCards || [];
-    debts = data.debts || [];
-    incomeSources = data.incomeSources || [];
-    settings = data.settings || settings;
-    budgetLimits = data.budgetLimits || [];
-    goals = data.goals || [];
-    saveAll();
-    applyTheme();
-    applyColorTheme();
-    closeSyncModal();
-    switchView('home');
-    showToast('✓ Synced!', 'success');
+    customConfirm('This will replace all current data on this device with the synced data.', {icon:'🔄', title:'Replace All Data?', okText:'Replace', }).then(function(ok) {
+      if (!ok) return;
+      transactions = data.transactions || [];
+      creditCards = data.creditCards || [];
+      debts = data.debts || [];
+      incomeSources = data.incomeSources || [];
+      settings = data.settings || settings;
+      budgetLimits = data.budgetLimits || [];
+      goals = data.goals || [];
+      saveAll(); applyTheme(); applyColorTheme(); closeSyncModal(); switchView('home'); showToast('✓ Synced!', 'success');
+    });
   } catch(e) { showToast('❌ Invalid code', 'error'); }
 }
 
@@ -2725,26 +2733,28 @@ function importData(e) {
     try {
       var data = JSON.parse(ev.target.result);
       if (!data.transactions) throw new Error('Invalid');
-      if (!confirm('Import and merge data?')) return;
-      transactions = (data.transactions || []).concat(transactions);
-      if (data.creditCards) creditCards = (data.creditCards || []).concat(creditCards);
-      if (data.debts) debts = (data.debts || []).concat(debts);
-      if (data.incomeSources) incomeSources = (data.incomeSources || []).concat(incomeSources);
-      if (data.budgetLimits) budgetLimits = (data.budgetLimits || []).concat(budgetLimits);
-      if (data.goals) goals = (data.goals || []).concat(goals);
-      saveAll(); applyTheme(); applyColorTheme(); switchView('home');
-      showToast('📥 Imported!', 'success');
+      customConfirm('This will merge imported data with your existing records.', {icon:'📥', title:'Import & Merge?', okText:'Import', safe:true}).then(function(ok) {
+        if (!ok) return;
+        transactions = (data.transactions || []).concat(transactions);
+        if (data.creditCards) creditCards = (data.creditCards || []).concat(creditCards);
+        if (data.debts) debts = (data.debts || []).concat(debts);
+        if (data.incomeSources) incomeSources = (data.incomeSources || []).concat(incomeSources);
+        if (data.budgetLimits) budgetLimits = (data.budgetLimits || []).concat(budgetLimits);
+        if (data.goals) goals = (data.goals || []).concat(goals);
+        saveAll(); applyTheme(); applyColorTheme(); switchView('home');
+        showToast('📥 Imported!', 'success');
+      });
     } catch(err) { showToast('❌ Invalid file', 'error'); }
   };
   reader.readAsText(file);
   e.target.value = '';
 }
 function clearAll() {
-  if (!confirm('Delete ALL data? This cannot be undone.')) return;
-  if (!confirm('Are you really sure?')) return;
-  transactions = []; creditCards = []; debts = []; incomeSources = []; budgetLimits = []; goals = [];
-  saveAll(); switchView('home');
-  showToast('🗑️ Cleared', 'success');
+  customConfirm('Every transaction, card, debt and goal will be permanently erased. This cannot be undone.', {icon:'⚠️', title:'Delete ALL Data?', okText:'Wipe Everything'}).then(function(ok) {
+    if (!ok) return;
+    transactions = []; creditCards = []; debts = []; incomeSources = []; budgetLimits = []; goals = [];
+    saveAll(); switchView('home'); showToast('🗑️ Cleared', 'success');
+  });
 }
 
 function renderMore() {
@@ -2794,6 +2804,24 @@ if ('serviceWorker' in navigator) {
 function updateOnlineStatus() { document.getElementById('offlineBar').classList.toggle('show', !navigator.onLine); }
 window.addEventListener('online', updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
+
+// Custom confirm dialog
+var _confirmResolve = null;
+function customConfirm(msg, opts) {
+  opts = opts || {};
+  document.getElementById('confirmIcon').textContent = opts.icon || '🗑️';
+  document.getElementById('confirmTitle').textContent = opts.title || 'Are you sure?';
+  document.getElementById('confirmMsg').textContent = msg;
+  var okBtn = document.getElementById('confirmOkBtn');
+  okBtn.textContent = opts.okText || 'Delete';
+  okBtn.className = 'confirm-ok' + (opts.safe ? ' safe' : '');
+  document.getElementById('customConfirm').classList.add('active');
+  return new Promise(function(res) { _confirmResolve = res; });
+}
+function resolveConfirm(result) {
+  document.getElementById('customConfirm').classList.remove('active');
+  if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
+}
 
 // INIT
 applyTheme();
