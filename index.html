@@ -648,7 +648,7 @@ body[data-theme="dark"] .install-card{background:linear-gradient(135deg,rgba(102
       <button class="income" id="typeIncome" onclick="setType('income')">💵 Income</button>
     </div>
     <div class="form-group">
-      <label>Payment Method</label>
+      <label id="methodLabel">Payment Method</label>
       <div class="method-toggle">
         <button class="active cash" id="methodCash" onclick="setMethod('cash')">💵 Cash</button>
         <button class="credit" id="methodCredit" onclick="setMethod('credit')">💳 Credit</button>
@@ -2003,6 +2003,13 @@ function setType(type) {
   var e = document.getElementById('typeExpense'); var i = document.getElementById('typeIncome');
   if (type === 'expense') { e.classList.add('active'); i.classList.remove('active'); }
   else { i.classList.add('active'); e.classList.remove('active'); }
+  // Update method toggle label and button text based on type
+  var isIncome = type === 'income';
+  document.getElementById('methodLabel').textContent = isIncome ? 'Goes To' : 'Payment Method';
+  document.getElementById('methodCash').textContent = isIncome ? '💵 Cash (Hand)' : '💵 Cash';
+  document.getElementById('methodCredit').textContent = isIncome ? '🏦 Bank' : '💳 Credit';
+  // Reset to cash when switching type
+  setMethod('cash');
   renderCategories();
   updateMethodUI();
 }
