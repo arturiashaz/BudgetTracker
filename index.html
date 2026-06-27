@@ -1795,23 +1795,23 @@ function getTotalCreditAvailable() { var t = 0; for (var i = 0; i < creditCards.
 function getTotalCreditLimit() { var t = 0; for (var i = 0; i < creditCards.length; i++) t += Number(creditCards[i].limit) || 0; return t; }
 function getTotalCreditUsed() { var t = 0; for (var i = 0; i < creditCards.length; i++) t += getCCOutstanding(creditCards[i]); return t; }
 function getCashBalance() {
-  var cash = 0;
+  var total = 0;
+  // All transactions regardless of method
   for (var i = 0; i < transactions.length; i++) {
     var t = transactions[i];
-    if (!t.method || t.method === 'cash') {
-      if (t.type === 'income') cash += Number(t.amount) || 0;
-      else if (t.type === 'expense') cash -= Number(t.amount) || 0;
-    }
+    if (t.type === 'income') total += Number(t.amount) || 0;
+    else if (t.type === 'expense' && t.method !== 'credit') total -= Number(t.amount) || 0;
   }
+  // All income sources regardless of method (transfers self-cancel via +/-)
   for (var j = 0; j < incomeSources.length; j++) {
-    var s = incomeSources[j];
-    if (!s.method || s.method === 'cash') cash += Number(s.amount) || 0;
+    total += Number(incomeSources[j].amount) || 0;
   }
+  // Credit card cash payments reduce balance
   for (var k = 0; k < creditCards.length; k++) {
     var cc = creditCards[k];
-    if (cc.payments) for (var l = 0; l < cc.payments.length; l++) cash -= Number(cc.payments[l].amount) || 0;
+    if (cc.payments) for (var l = 0; l < cc.payments.length; l++) total -= Number(cc.payments[l].amount) || 0;
   }
-  return cash;
+  return total;
 }
 function getDebtPaid(d) { var t = 0; if (d.payments) for (var i = 0; i < d.payments.length; i++) t += Number(d.payments[i].amount) || 0; return t; }
 function getDebtRemaining(d) { return Math.max(0, (Number(d.amount) || 0) - getDebtPaid(d)); }
