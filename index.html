@@ -117,6 +117,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .type-toggle button.active.debt{background:var(--debt);color:#fff}
 .method-toggle button.active.cash{background:var(--cash);color:#fff}
 .method-toggle button.active.credit{background:var(--credit);color:#fff}
+.method-toggle button.active.transfer{background:var(--warning);color:#fff}
 .form-group{margin-bottom:14px}
 .form-group label{display:block;font-size:13px;color:var(--text-light);margin-bottom:6px;font-weight:500}
 .form-group input,.form-group select,.form-group textarea{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;font-size:15px;background:var(--card);font-family:inherit;color:var(--text)}
@@ -899,9 +900,19 @@ body[data-theme="dark"] .install-card{background:linear-gradient(135deg,rgba(102
       </div>
       <div class="form-group">
         <label>Goes To</label>
-        <div class="method-toggle">
+        <div class="method-toggle" style="grid-template-columns:1fr 1fr 1fr">
           <button type="button" class="active cash" id="incomeMethodCash" onclick="setIncomeMethod('cash')">💵 Cash</button>
-          <button type="button" id="incomeMethodCredit" onclick="setIncomeMethod('credit')">💳 Credit</button>
+          <button type="button" class="credit" id="incomeMethodCredit" onclick="setIncomeMethod('credit')">🏦 Bank</button>
+          <button type="button" class="transfer" id="incomeMethodTransfer" onclick="setIncomeMethod('transfer')">🔄 Transfer</button>
+        </div>
+      </div>
+      <div id="transferGroup" style="display:none">
+        <div class="form-group">
+          <label>Transfer Direction</label>
+          <div class="method-toggle">
+            <button type="button" class="active cash" id="transferDirCash" onclick="setTransferDir('cash-to-bank')">💵→🏦 Cash to Bank</button>
+            <button type="button" class="credit" id="transferDirBank" onclick="setTransferDir('bank-to-cash')">🏦→💵 Bank to Cash</button>
+          </div>
         </div>
       </div>
       <div class="form-group">
@@ -2269,54 +2280,90 @@ function saveDebtPayment(e) {
   showToast('💰 Payment recorded!', 'success');
 }
 
+var currentTransferDir = 'cash-to-bank';
 function openIncomeModal() { document.getElementById('incomeForm').reset(); document.getElementById('incomeDate').value = new Date().toISOString().split('T')[0]; setIncomeMethod('cash'); document.getElementById('incomeOverlay').classList.add('active'); }
 function closeIncomeModal() { document.getElementById('incomeOverlay').classList.remove('active'); }
 function setIncomeMethod(method) {
   currentIncomeMethod = method;
-  var c = document.getElementById('incomeMethodCash'); var cr = document.getElementById('incomeMethodCredit');
-  if (method === 'cash') { c.classList.add('active'); cr.classList.remove('active'); }
-  else { cr.classList.add('active'); c.classList.remove('active'); }
+  var c = document.getElementById('incomeMethodCash');
+  var cr = document.getElementById('incomeMethodCredit');
+  var tr = document.getElementById('incomeMethodTransfer');
+  c.classList.toggle('active', method === 'cash');
+  cr.classList.toggle('active', method === 'credit');
+  tr.classList.toggle('active', method === 'transfer');
+  document.getElementById('transferGroup').style.display = method === 'transfer' ? 'block' : 'none';
   var btn = document.getElementById('incomeSubmitBtn');
-  if (method === 'credit') { btn.textContent = '💳 Add to Credit'; btn.className = 'submit-btn credit'; }
-  else { btn.textContent = '💵 Add to Cash'; btn.className = 'submit-btn success'; }
+  if (method === 'credit') { btn.textContent = '🏦 Add to Bank'; btn.className = 'submit-btn credit'; }
+  else if (method === 'transfer') { btn.textContent = '🔄 Record Transfer'; btn.className = 'submit-btn'; btn.style.background = 'var(--warning)'; }
+  else { btn.textContent = '💵 Add to Cash'; btn.className = 'submit-btn success'; btn.style.background = ''; }
+}
+function setTransferDir(dir) {
+  currentTransferDir = dir;
+  document.getElementById('transferDirCash').classList.toggle('active', dir === 'cash-to-bank');
+  document.getElementById('transferDirBank').classList.toggle('active', dir === 'bank-to-cash');
 }
 function saveIncomeSource(e) {
   e.preventDefault();
-  incomeSources.unshift({
-    id: Date.now(),
-    name: document.getElementById('incomeName').value.trim(),
-    amount: Number(document.getElementById('incomeAmount').value),
-    method: currentIncomeMethod,
-    date: document.getElementById('incomeDate').value
-  });
+  var name = document.getElementById('incomeName').value.trim();
+  var amount = Number(document.getElementById('incomeAmount').value);
+  var date = document.getElementById('incomeDate').value;
+  if (currentIncomeMethod === 'transfer') {
+    // Save as two entries: one debit one credit to balance correctly
+    var fromMethod = currentTransferDir === 'cash-to-bank' ? 'cash' : 'credit';
+    var toMethod   = currentTransferDir === 'cash-to-bank' ? 'credit' : 'cash';
+    var label = currentTransferDir === 'cash-to-bank' ? '💵→🏦 ' : '🏦→💵 ';
+    incomeSources.unshift({ id: Date.now(),     name: label + name, amount: amount,  method: toMethod,   date: date, _transfer: true });
+    incomeSources.unshift({ id: Date.now() + 1, name: label + name, amount: -amount, method: fromMethod, date: date, _transfer: true });
+  } else {
+    incomeSources.unshift({ id: Date.now(), name: name, amount: amount, method: currentIncomeMethod, date: date });
+  }
   saveAll(); closeIncomeModal(); switchView('income');
-  showToast('💵 Added!', 'success');
+  showToast(currentIncomeMethod === 'transfer' ? '🔄 Transfer recorded!' : '💵 Added!', 'success');
 }
 function renderIncome() {
   var month = getMonthIncome();
   var total = 0, bank = 0, cashAmt = 0;
   for (var i = 0; i < month.length; i++) {
     var amt = Number(month[i].amount) || 0;
-    total += amt;
+    if (!month[i]._transfer) total += Math.max(0, amt); // only count actual income in total
     if (month[i].method === 'credit') bank += amt;
     else cashAmt += amt;
   }
   document.getElementById('incomeTotal').textContent = formatMoney(total);
   document.getElementById('incomeBank').textContent = formatMoney(bank);
   document.getElementById('incomeCash').textContent = formatMoney(cashAmt);
-  document.getElementById('incomeCount').textContent = month.length + ' income source' + (month.length !== 1 ? 's' : '') + ' this month';
+  var realCount = month.filter(function(s) { return !s._transfer; }).length;
+  document.getElementById('incomeCount').textContent = realCount + ' income source' + (realCount !== 1 ? 's' : '') + ' this month';
   var list = document.getElementById('incomeList');
   if (month.length === 0) { list.innerHTML = '<div class="empty-state"><div class="emoji">💵</div><div class="text">No income yet. Add from here or the Home tab.</div></div>'; return; }
   var html = '';
   for (var j = 0; j < month.length; j++) {
     var s = month[j];
-    var tag = s.method === 'credit' ? '<span class="method-tag credit">🏦 Bank</span>' : '<span class="method-tag cash">💵 Cash</span>';
+    var isNeg = Number(s.amount) < 0;
+    var tag = s._transfer
+      ? '<span class="method-tag" style="background:rgba(245,158,11,.15);color:#d97706">🔄 Transfer</span>'
+      : (s.method === 'credit' ? '<span class="method-tag credit">🏦 Bank</span>' : '<span class="method-tag cash">💵 Cash</span>');
+    var amtDisplay = (isNeg ? '-' : '+') + formatMoney(Math.abs(Number(s.amount)));
+    var amtColor = isNeg ? 'color:var(--danger)' : 'color:var(--success)';
     var deleteBtn = s._fromTx ? '' : '<button onclick="deleteIncome(' + s.id + ')">🗑️</button>';
-    html += '<div class="income-source"><div class="icon">💵</div><div class="info"><div class="name">' + escapeHTML(s.name) + ' ' + tag + '</div><div class="meta">' + formatDate(s.date) + (s._fromTx ? ' · from Home' : '') + '</div></div><div class="amount">+' + formatMoney(s.amount) + '</div><div class="actions">' + deleteBtn + '</div></div>';
+    html += '<div class="income-source"><div class="icon">' + (s._transfer ? '🔄' : '💵') + '</div><div class="info"><div class="name">' + escapeHTML(s.name) + ' ' + tag + '</div><div class="meta">' + formatDate(s.date) + (s._fromTx ? ' · from Home' : '') + '</div></div><div class="amount" style="' + amtColor + '">' + amtDisplay + '</div><div class="actions">' + deleteBtn + '</div></div>';
   }
   list.innerHTML = html;
 }
-function deleteIncome(id) { customConfirm('Remove this income entry?', {icon:'💵', title:'Delete Income?', okText:'Delete'}).then(function(ok) { if (!ok) return; incomeSources = incomeSources.filter(function(s) { return s.id !== id; }); saveAll(); switchView('income'); }); }
+function deleteIncome(id) {
+  var entry = incomeSources.find(function(s) { return s.id === id; });
+  var msg = entry && entry._transfer ? 'Both sides of this transfer will be removed.' : 'Remove this income entry?';
+  customConfirm(msg, {icon: entry && entry._transfer ? '🔄' : '💵', title: entry && entry._transfer ? 'Delete Transfer?' : 'Delete Income?', okText:'Delete'}).then(function(ok) {
+    if (!ok) return;
+    if (entry && entry._transfer) {
+      // Remove both transfer entries (same name + date)
+      incomeSources = incomeSources.filter(function(s) { return !(s._transfer && s.name === entry.name && s.date === entry.date); });
+    } else {
+      incomeSources = incomeSources.filter(function(s) { return s.id !== id; });
+    }
+    saveAll(); switchView('income');
+  });
+}
 
 function renderTransactions() {
   var search = (document.getElementById('searchBox').value || '').toLowerCase();
